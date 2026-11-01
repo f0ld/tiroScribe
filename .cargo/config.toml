@@ -1,4 +1,5 @@
 # sherpa-onnx's Windows libraries are built against the static C runtime, which also spares
-# users from installing the Visual C++ redistributable.
+# users from installing the Visual C++ redistributable. Only release builds link on Windows:
+# in debug builds, whisper-rs-sys compiles whisper.cpp with CMake's default dynamic runtime.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]
