@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run tests
         run: |
-          docker build -t tiroscribe-build packaging/linux
+          docker build -t tiroscribe-build -f packaging/linux/Containerfile packaging/linux
           docker run --rm -v "$PWD:/src:ro" tiroscribe-build sh -c '
             set -e
             cp -r /src /tmp/src && cd /tmp/src
