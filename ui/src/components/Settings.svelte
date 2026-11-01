@@ -49,7 +49,7 @@
   <section class="card">
     <h2>NPU (experimental)</h2>
     <p class="small muted">
-      liveScribe reaches the NPU through a local transcription server with an OpenAI-compatible API. On AMD Ryzen AI
+      tiroScribe reaches the NPU through a local transcription server with an OpenAI-compatible API. On AMD Ryzen AI
       (XDNA 2) under Linux this is <strong>Lemonade Server</strong> with the FastFlowLM backend (needs the
       <code>amdxdna</code> driver, kernel 7.0+ and NPU firmware ≥ 1.1). Start the server, load a Whisper model, then
       test the connection here.

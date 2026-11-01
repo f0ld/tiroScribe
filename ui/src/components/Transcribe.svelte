@@ -45,7 +45,7 @@
   async function changeOutput(i: number) {
     const path = await save({
       defaultPath: files[i].output,
-      filters: [{ name: "liveScribe transcript", extensions: ["json"] }],
+      filters: [{ name: "tiroScribe transcript", extensions: ["json"] }],
     });
     if (path) files[i].output = path.endsWith(".scribe.json") ? path : path.replace(/(\.json)?$/, ".scribe.json");
   }

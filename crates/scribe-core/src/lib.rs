@@ -1,4 +1,4 @@
-//! liveScribe core: local, private transcription of interviews with speaker detection.
+//! tiroScribe core: local, private transcription of interviews with speaker detection.
 
 pub mod align;
 pub mod asr;

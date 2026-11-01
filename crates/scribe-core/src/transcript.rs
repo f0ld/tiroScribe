@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 /// Bump when the on-disk layout changes incompatibly.
 pub const FORMAT_VERSION: u32 = 1;
 
-/// File suffix used for liveScribe transcripts.
+/// File suffix used for tiroScribe transcripts.
 pub const FILE_SUFFIX: &str = ".scribe.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -85,7 +85,7 @@ impl Transcript {
             .with_context(|| format!("parsing {}", path.display()))?;
         if t.version > FORMAT_VERSION {
             anyhow::bail!(
-                "{} was written by a newer liveScribe (format v{}, supported v{})",
+                "{} was written by a newer tiroScribe (format v{}, supported v{})",
                 path.display(),
                 t.version,
                 FORMAT_VERSION

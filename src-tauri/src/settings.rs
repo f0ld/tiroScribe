@@ -6,7 +6,7 @@ use std::path::PathBuf;
 fn path() -> PathBuf {
     dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("liveScribe")
+        .join("tiroScribe")
         .join("settings.json")
 }
 

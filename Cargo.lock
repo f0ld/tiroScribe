@@ -2117,22 +2117,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4744e383959f0db86ede514b809b1c53251889093803c05267acc7d4e7030d70"
 
 [[package]]
-name = "livescribe"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dirs",
- "env_logger",
- "log",
- "scribe-core",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
-]
-
-[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4034,6 +4018,22 @@ name = "tinyvec"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
+
+[[package]]
+name = "tiroscribe"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dirs",
+ "env_logger",
+ "log",
+ "scribe-core",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+]
 
 [[package]]
 name = "tokio"

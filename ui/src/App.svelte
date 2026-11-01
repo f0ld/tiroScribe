@@ -33,7 +33,7 @@
   <nav>
     <div class="brand">
       <img src="/icon.svg" alt="" width="28" height="28" />
-      <span>liveScribe</span>
+      <span>tiroScribe</span>
     </div>
     {#each nav as item (item.view)}
       <button class="ghost" class:active={app.view === item.view} onclick={() => (app.view = item.view)}>

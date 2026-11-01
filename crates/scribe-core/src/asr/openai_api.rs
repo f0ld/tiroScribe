@@ -1,6 +1,6 @@
 //! Speech recognition through a local OpenAI-compatible `/audio/transcriptions` endpoint.
 //!
-//! This is how liveScribe reaches the NPU: AMD's Lemonade server (FastFlowLM backend) runs
+//! This is how tiroScribe reaches the NPU: AMD's Lemonade server (FastFlowLM backend) runs
 //! Whisper on Ryzen AI XDNA 2 NPUs and exposes this API. Any other compatible local server
 //! (e.g. whisper.cpp's `whisper-server`, speaches) works as well.
 
@@ -77,7 +77,7 @@ impl OpenAiAsr {
         language: Option<&str>,
         prompt: &str,
     ) -> anyhow::Result<VerboseJson> {
-        const BOUNDARY: &str = "----liveScribeBoundary7MA4YWxkTrZu0gW";
+        const BOUNDARY: &str = "----tiroScribeBoundary7MA4YWxkTrZu0gW";
         let mut body = Vec::new();
         let mut field = |name: &str, value: &str| {
             body.extend_from_slice(

@@ -1,4 +1,4 @@
-# liveScribe
+# tiroScribe
 
 Private, local transcription of interviews for qualitative social research and journalism –
 with speaker detection, an audio-synced correction editor and exports for analysis tools.
@@ -59,8 +59,8 @@ ui/node_modules/.bin/tauri build
 ```
 
 On first start, open **Models** and download a Whisper model; the helper models
-(~35 MB) are fetched automatically. Models live in `~/.local/share/liveScribe/models`
-(override with `LIVESCRIBE_MODELS`).
+(~35 MB) are fetched automatically. Models live in `~/.local/share/tiroScribe/models`
+(override with `TIROSCRIBE_MODELS`).
 
 ## Command line
 
@@ -75,11 +75,11 @@ cargo run --release -p scribe-core --features cli --bin scribe-cli -- \
     export interview.scribe.json -f html -o interview.html
 ```
 
-`liveScribe path/to/interview.scribe.json` opens a transcript directly in the editor.
+`tiroScribe path/to/interview.scribe.json` opens a transcript directly in the editor.
 
 ## NPU (experimental)
 
-liveScribe talks to the NPU through a local server that implements OpenAI's
+tiroScribe talks to the NPU through a local server that implements OpenAI's
 `/audio/transcriptions` endpoint, sending ~28 s chunks cut at quiet points. On AMD Ryzen AI
 (XDNA 2) under Linux that is [Lemonade Server](https://lemonade-server.ai) with the FastFlowLM
 backend, which needs the `amdxdna` driver (kernel 7.0+), NPU firmware ≥ 1.1 and – on Fedora –

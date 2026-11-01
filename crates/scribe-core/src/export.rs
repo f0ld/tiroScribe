@@ -158,7 +158,7 @@ fn header_lines(t: &Transcript) -> Vec<String> {
     vec![
         file,
         format!("Duration: {}", clock(t.media.duration)),
-        format!("Transcribed with liveScribe – {}, model {}", t.engine.backend, t.engine.model),
+        format!("Transcribed with tiroScribe – {}, model {}", t.engine.backend, t.engine.model),
     ]
 }
 

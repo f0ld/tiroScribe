@@ -75,7 +75,7 @@ impl WhisperAsr {
             }
             Device::Gpu { index } => {
                 if !cfg!(feature = "vulkan") {
-                    anyhow::bail!("this build of liveScribe has no GPU support");
+                    anyhow::bail!("this build of tiroScribe has no GPU support");
                 }
                 params.use_gpu(true).gpu_device(*index);
                 // Flash attention speeds up GPUs but excludes DTW timing, which matters more

@@ -15,7 +15,7 @@ use scribe_core::transcript::default_transcript_path;
 use scribe_core::{models, Engines, JobCtx, JobSpec, Transcript};
 
 #[derive(Parser)]
-#[command(name = "scribe-cli", about = "liveScribe – local interview transcription")]
+#[command(name = "scribe-cli", about = "tiroScribe – local interview transcription")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,

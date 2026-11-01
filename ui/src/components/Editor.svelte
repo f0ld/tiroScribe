@@ -114,7 +114,7 @@
   async function openFile() {
     const picked = await open({
       multiple: false,
-      filters: [{ name: "liveScribe transcript", extensions: ["json"] }],
+      filters: [{ name: "tiroScribe transcript", extensions: ["json"] }],
     });
     if (picked && !Array.isArray(picked)) app.editorPath = picked;
   }

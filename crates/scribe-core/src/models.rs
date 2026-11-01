@@ -118,14 +118,14 @@ pub fn find(id: &str) -> Option<&'static ModelInfo> {
     CATALOG.iter().find(|m| m.id == id)
 }
 
-/// `~/.local/share/liveScribe/models` on Linux. Overridable via `LIVESCRIBE_MODELS`.
+/// `~/.local/share/tiroScribe/models` on Linux. Overridable via `TIROSCRIBE_MODELS`.
 pub fn models_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("LIVESCRIBE_MODELS") {
+    if let Some(dir) = std::env::var_os("TIROSCRIBE_MODELS") {
         return PathBuf::from(dir);
     }
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("liveScribe")
+        .join("tiroScribe")
         .join("models")
 }
 

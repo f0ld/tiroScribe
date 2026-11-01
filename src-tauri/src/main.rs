@@ -20,7 +20,7 @@ fn main() {
             queue::spawn_worker(app.handle().clone(), queue.clone());
             app.manage(queue);
             app.manage(commands::Downloads::default());
-            // `livescribe interview.scribe.json` opens the transcript in the editor.
+            // `tiroscribe interview.scribe.json` opens the transcript in the editor.
             let initial = std::env::args().nth(1).filter(|a| a.ends_with(".json"));
             app.manage(commands::InitialFile(initial.map(|p| {
                 std::fs::canonicalize(&p)
@@ -49,5 +49,5 @@ fn main() {
             settings::set_settings,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running liveScribe");
+        .expect("error while running tiroScribe");
 }

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "liveScribe",
+  "productName": "tiroScribe",
   "version": "0.1.0",
-  "identifier": "de.livescribe.app",
+  "identifier": "io.github.f0ld.tiroscribe",
   "build": {
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
@@ -20,7 +20,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "liveScribe",
+        "title": "tiroScribe",
         "width": 1280,
         "height": 860,
         "minWidth": 900,

@@ -3,7 +3,7 @@ name = "scribe-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Transcription, diarization and export pipeline for liveScribe"
+description = "Transcription, diarization and export pipeline for tiroScribe"
 
 [features]
 default = ["vulkan"]
