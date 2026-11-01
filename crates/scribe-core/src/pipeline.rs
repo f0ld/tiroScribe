@@ -4,12 +4,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::align::build_segments;
+use crate::align::build_segments_with_voice;
 use crate::asr::openai_api::{OpenAiAsr, ServerConfig};
 use crate::asr::whisper::WhisperAsr;
 use crate::asr::{is_filler, AsrBackend, AsrOptions, Device, Quality, RawWord};
 use crate::audio::{self, TimeRange};
-use crate::diarize::{self, Speakers};
+use crate::diarize::{self, Speakers, VoiceEmbedder};
 use crate::job::{JobCtx, Stage};
 use crate::models::{self, ModelKind};
 use crate::transcript::{EngineInfo, MediaInfo, Transcript, FORMAT_VERSION};
@@ -144,7 +144,14 @@ pub fn run(spec: &JobSpec, engines: &mut Engines, job: &JobCtx) -> anyhow::Resul
     }
 
     job.report(Stage::Finishing, 0.0);
-    let (speakers, segments) = build_segments(&words, &turns);
+    let embedder = match &diar_models {
+        Some((_, emb)) if !turns.is_empty() => Some(VoiceEmbedder::new(emb, threads)?),
+        _ => None,
+    };
+    let (speakers, segments) = build_segments_with_voice(&words, &turns, |start, end| {
+        let at = |t: f64| (((t - audio.offset) * 16_000.0).max(0.0) as usize).min(audio.samples.len());
+        embedder.as_ref()?.embed(&audio.samples[at(start)..at(end)])
+    });
     let transcript = Transcript {
         version: FORMAT_VERSION,
         media: MediaInfo {

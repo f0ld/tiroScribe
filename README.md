@@ -92,10 +92,16 @@ on the CPU – it takes a few seconds per hour of audio.
 
 ## Accuracy notes
 
-Measured on a 6-minute German two-person interview (Radeon 890M, precise mode):
-transcription + diarization in ~80 s (≈ 5× real time). With the speaker count given,
+Measured on a 6-minute German two-person interview (Radeon 890M, precise mode, turbo model):
+transcription + diarization in ~65 s (≈ 6× real time). With the speaker count given,
 CAM++ embeddings mislabel about 1.6 % of speech time; WeSpeaker ResNet34 (the usual
-default elsewhere) got ~9 %, so CAM++ is the default here. `cargo run --release -p scribe-core
+default elsewhere) got ~9 %, so CAM++ is the default here. These numbers come from one
+recording with two clearly different voices, so expect less on harder audio.
+
+Speakers are assigned in stages: DTW word timing (about 20–30 % slower than flash attention on
+the GPU; used for the catalog's large-v3 and small models), then diarization turns, smoothing
+inside sentences, and a voice check that moves whole sentences only when they clearly sound
+like another speaker. `examples/realign.rs` and `examples/voicecheck.rs` re-run those steps. `cargo run --release -p scribe-core
 --example diar` runs diarization alone for experimenting with models and thresholds.
 
 ## Architecture

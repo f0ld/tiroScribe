@@ -6,7 +6,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
-use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
+use whisper_rs::{
+    DtwMode, DtwModelPreset, DtwParameters, FullParams, SamplingStrategy, WhisperContext,
+    WhisperContextParameters,
+};
 
 use super::{initial_prompt, AsrBackend, AsrOptions, AsrOutput, Device, Quality, RawWord};
 use crate::job::{JobCtx, Stage};
@@ -42,6 +45,21 @@ pub fn install_logging() {
     whisper_rs::install_logging_hooks();
 }
 
+/// Alignment heads for DTW word timing. Files we cannot identify go without DTW, because
+/// wrong heads would give wrong times; fine-tunes keep the architecture of their base model.
+fn dtw_preset(model_path: &Path) -> Option<DtwModelPreset> {
+    let name = model_path.file_name()?.to_string_lossy().to_lowercase();
+    if name.contains("large-v3-turbo") {
+        Some(DtwModelPreset::LargeV3Turbo)
+    } else if name.contains("large-v3") {
+        Some(DtwModelPreset::LargeV3)
+    } else if name.contains("small") && !name.contains(".en") {
+        Some(DtwModelPreset::Small)
+    } else {
+        None
+    }
+}
+
 pub struct WhisperAsr {
     model_path: PathBuf,
     device: Device,
@@ -60,10 +78,17 @@ impl WhisperAsr {
                     anyhow::bail!("this build of liveScribe has no GPU support");
                 }
                 params.use_gpu(true).gpu_device(*index);
-                // Flash attention is a sizeable speed-up on GPUs and does not affect accuracy.
-                params.flash_attn(true);
+                // Flash attention speeds up GPUs but excludes DTW timing, which matters more
+                // here. It also changes some recognised words, neither clearly better nor worse.
+                params.flash_attn(dtw_preset(model_path).is_none());
             }
             Device::Npu => anyhow::bail!("Whisper.cpp cannot run on the NPU; use the NPU backend"),
+        }
+        if let Some(model_preset) = dtw_preset(model_path) {
+            params.dtw_parameters(DtwParameters {
+                mode: DtwMode::ModelPreset { model_preset },
+                ..Default::default()
+            });
         }
         let ctx = WhisperContext::new_with_params(model_path, params)
             .map_err(|e| anyhow!("{e}"))
@@ -178,6 +203,14 @@ impl WordBuilder {
     }
 }
 
+/// DTW places tokens consistently this much (seconds) after the speech they belong to;
+/// measured against clean speaker changes.
+const DTW_LAG: f64 = 0.15;
+/// Longest time a word may claim when its end comes from the start of the next word.
+const DTW_MAX_WORD: f64 = 1.5;
+/// Duration of a segment's last word if nothing better is known.
+const DTW_LAST_WORD: f64 = 0.3;
+
 fn collect_words(state: &whisper_rs::WhisperState, eot: i32) -> Vec<RawWord> {
     let mut words = Vec::new();
     let mut cur = WordBuilder::default();
@@ -185,6 +218,8 @@ fn collect_words(state: &whisper_rs::WhisperState, eot: i32) -> Vec<RawWord> {
         // Segment times are reliable bounds for the (noisier) token times.
         let seg_start = segment.start_timestamp() as f64 / 100.0;
         let seg_end = segment.end_timestamp() as f64 / 100.0;
+        let first_word = words.len();
+        let mut has_dtw = false;
         for i in 0..segment.n_tokens() {
             let Some(token) = segment.get_token(i) else {
                 continue;
@@ -196,7 +231,14 @@ fn collect_words(state: &whisper_rs::WhisperState, eot: i32) -> Vec<RawWord> {
                 continue;
             };
             let data = token.token_data();
-            let t0 = (data.t0 as f64 / 100.0).clamp(seg_start, seg_end);
+            // t_dtw is negative where DTW is off or could not place the token.
+            let raw_t0 = if data.t_dtw >= 0 {
+                has_dtw = true;
+                data.t_dtw as f64 / 100.0 - DTW_LAG
+            } else {
+                data.t0 as f64 / 100.0
+            };
+            let t0 = raw_t0.clamp(seg_start, seg_end);
             let t1 = (data.t1 as f64 / 100.0).clamp(t0, seg_end);
             // A token starting with a space begins a new word. Multi-byte characters (umlauts)
             // can be split across tokens, so the text is assembled from raw bytes.
@@ -210,7 +252,53 @@ fn collect_words(state: &whisper_rs::WhisperState, eot: i32) -> Vec<RawWord> {
         }
         // Whisper segments never split a word.
         cur.flush(&mut words);
+        if has_dtw {
+            dtw_word_ends(&mut words[first_word..], seg_end);
+        }
     }
     cur.flush(&mut words);
     words
+}
+
+/// DTW only gives start times, so a word lasts until the next one starts.
+fn dtw_word_ends(words: &mut [RawWord], seg_end: f64) {
+    for i in 0..words.len() {
+        let start = words[i].start;
+        let end = match words.get(i + 1) {
+            Some(next) => next.start.min(start + DTW_MAX_WORD),
+            None => words[i].end.max(start + DTW_LAST_WORD).min(seg_end),
+        };
+        words[i].end = end.max(start);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn w(start: f64) -> RawWord {
+        RawWord {
+            text: "x".into(),
+            start,
+            end: start,
+            conf: 1.0,
+        }
+    }
+
+    #[test]
+    fn dtw_ends_come_from_the_next_word() {
+        let mut words = [w(1.0), w(1.4), w(9.0)];
+        dtw_word_ends(&mut words, 9.1);
+        assert_eq!(words[0].end, 1.4);
+        assert_eq!(words[1].end, 1.4 + DTW_MAX_WORD); // long pause: does not stretch across it
+        assert_eq!(words[2].end, 9.1); // capped by the segment
+    }
+
+    #[test]
+    fn dtw_only_for_known_models() {
+        let preset = |n: &str| dtw_preset(Path::new(n));
+        assert!(matches!(preset("/m/ggml-large-v3-turbo-german.bin"), Some(DtwModelPreset::LargeV3Turbo)));
+        assert!(matches!(preset("ggml-large-v3.bin"), Some(DtwModelPreset::LargeV3)));
+        assert!(preset("my-own-model.bin").is_none());
+    }
 }

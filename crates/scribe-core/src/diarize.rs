@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use sherpa_onnx::{
     FastClusteringConfig, OfflineSpeakerDiarization, OfflineSpeakerDiarizationConfig,
     OfflineSpeakerSegmentationModelConfig, OfflineSpeakerSegmentationPyannoteModelConfig,
-    SpeakerEmbeddingExtractorConfig,
+    SpeakerEmbeddingExtractor, SpeakerEmbeddingExtractorConfig,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -90,4 +90,32 @@ pub fn diarize(
             speaker: s.speaker,
         })
         .collect())
+}
+
+/// Computes voice fingerprints for stretches of audio.
+pub struct VoiceEmbedder(SpeakerEmbeddingExtractor);
+
+impl VoiceEmbedder {
+    pub fn new(embedding_model: &Path, threads: i32) -> anyhow::Result<Self> {
+        let config = SpeakerEmbeddingExtractorConfig {
+            model: Some(embedding_model.to_string_lossy().into_owned()),
+            num_threads: threads.max(1),
+            ..Default::default()
+        };
+        match SpeakerEmbeddingExtractor::create(&config) {
+            Some(e) => Ok(Self(e)),
+            None => bail!("could not load the speaker embedding model"),
+        }
+    }
+
+    /// `None` if the audio is too short for a fingerprint.
+    pub fn embed(&self, samples: &[f32]) -> Option<Vec<f32>> {
+        let stream = self.0.create_stream()?;
+        stream.accept_waveform(16_000, samples);
+        stream.input_finished();
+        if !self.0.is_ready(&stream) {
+            return None;
+        }
+        self.0.compute(&stream)
+    }
 }
