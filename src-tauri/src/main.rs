@@ -10,12 +10,14 @@ use std::sync::Arc;
 use tauri::Manager;
 
 fn main() {
+    scribe_core::asr::whisper::handle_gpu_probe();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     scribe_core::asr::whisper::install_logging();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            commands::prune_old_playback_copies(app.handle());
             let queue = Arc::new(queue::Queue::default());
             queue::spawn_worker(app.handle().clone(), queue.clone());
             app.manage(queue);
@@ -45,6 +47,8 @@ fn main() {
             commands::save_transcript,
             commands::export_transcript,
             commands::prepare_playback,
+            commands::playback_cache_size,
+            commands::clear_playback_cache,
             settings::get_settings,
             settings::set_settings,
         ])

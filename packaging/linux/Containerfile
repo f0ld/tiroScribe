@@ -1,0 +1,13 @@
+# Build environment for the Linux release. The AppImage runs on systems with this glibc or newer.
+FROM docker.io/library/ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      build-essential ca-certificates clang cmake curl file git libclang-dev nasm patchelf \
+      pkg-config python3 xz-utils desktop-file-utils \
+      libopus-dev libvulkan-dev glslc \
+      libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev libssl-dev librsvg2-dev \
+      gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+      gstreamer1.0-alsa gstreamer1.0-pulseaudio gstreamer1.0-tools
+ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:/opt/node/bin:$PATH
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain 1.99.0
+RUN mkdir -p /opt/node && curl -fsSL https://nodejs.org/dist/v22.23.1/node-v22.23.1-linux-x64.tar.xz \
+      | tar -xJ --strip-components=1 -C /opt/node

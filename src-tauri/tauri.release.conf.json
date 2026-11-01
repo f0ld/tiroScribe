@@ -1,0 +1,7 @@
+{
+  "bundle": {
+    "targets": ["appimage"],
+    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"],
+    "resources": { "../THIRD-PARTY-LICENSES.txt": "THIRD-PARTY-LICENSES.txt" }
+  }
+}

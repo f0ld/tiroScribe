@@ -39,6 +39,8 @@ export const api = {
     const mime = new TextDecoder().decode(buf.subarray(0, nl));
     return URL.createObjectURL(new Blob([buf.subarray(nl + 1)], { type: mime }));
   },
+  playbackCacheSize: () => invoke<number>("playback_cache_size"),
+  clearPlaybackCache: () => invoke<void>("clear_playback_cache"),
   getSettings: () => invoke<unknown>("get_settings"),
   setSettings: (settings: unknown) => invoke<void>("set_settings", { settings }),
 };

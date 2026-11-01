@@ -1,4 +1,5 @@
-//! Media decoding via the system `ffmpeg`, which handles practically every audio/video container.
+//! Media decoding via `ffmpeg`, which handles practically every audio/video container.
+//! Release builds ship it next to the executable; otherwise the one on `PATH` is used.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -29,8 +30,18 @@ pub struct TimeRange {
     pub end: Option<f64>,
 }
 
+/// The bundled copy of an ffmpeg tool if there is one, else its name for a `PATH` lookup.
+fn tool(name: &str) -> PathBuf {
+    let file = format!("{name}{}", std::env::consts::EXE_SUFFIX);
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join(&file)))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from(file))
+}
+
 pub fn check_ffmpeg() -> anyhow::Result<()> {
-    let ok = Command::new("ffmpeg")
+    let ok = Command::new(tool("ffmpeg"))
         .arg("-version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -38,14 +49,14 @@ pub fn check_ffmpeg() -> anyhow::Result<()> {
         .map(|s| s.success())
         .unwrap_or(false);
     if !ok {
-        bail!("ffmpeg was not found on PATH – please install it (e.g. `dnf install ffmpeg`)");
+        bail!("ffmpeg was not found – please install it with your package manager");
     }
     Ok(())
 }
 
 /// Duration of the media file in seconds, via `ffprobe`.
 pub fn probe_duration(path: &Path) -> anyhow::Result<f64> {
-    let out = Command::new("ffprobe")
+    let out = Command::new(tool("ffprobe"))
         .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
         .arg(path)
         .output()
@@ -66,7 +77,7 @@ pub fn probe_duration(path: &Path) -> anyhow::Result<f64> {
 /// Decodes (a range of) any media file to 16 kHz mono f32.
 pub fn decode(path: &Path, range: TimeRange) -> anyhow::Result<Audio> {
     check_ffmpeg()?;
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = Command::new(tool("ffmpeg"));
     cmd.args(["-nostdin", "-hide_banner", "-loglevel", "error"]);
     let offset = range.start.unwrap_or(0.0).max(0.0);
     if offset > 0.0 {
@@ -117,7 +128,7 @@ pub fn make_playback_copy(src: &Path, dst: &Path) -> anyhow::Result<PathBuf> {
     if let Some(dir) = dst.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let out = Command::new("ffmpeg")
+    let out = Command::new(tool("ffmpeg"))
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(src)
         .args(["-vn", "-ac", "1", "-c:a", "libopus", "-b:a", "48k"])

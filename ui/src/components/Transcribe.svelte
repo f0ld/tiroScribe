@@ -118,7 +118,7 @@
   </header>
 
   {#if app.info && !app.info.ffmpeg}
-    <div class="notice warn">ffmpeg was not found. Install it (<code>sudo dnf install ffmpeg</code>) to read audio files.</div>
+    <div class="notice warn">ffmpeg was not found. Install it with your package manager to read audio files.</div>
   {/if}
   {#if app.missingEssentials.length > 0 || app.installedWhisper.length === 0}
     <div class="notice">

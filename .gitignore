@@ -18,3 +18,8 @@ src-tauri/gen/schemas/
 # Local test media & outputs
 /samples/
 *.scribe.json
+
+# Release builds
+/dist/
+/src-tauri/binaries/
+/THIRD-PARTY-LICENSES.txt

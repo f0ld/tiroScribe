@@ -3127,6 +3127,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "sha2",
  "sherpa-onnx",
  "thiserror 2.0.21",
  "ureq 3.5.0",

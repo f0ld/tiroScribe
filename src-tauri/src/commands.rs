@@ -1,10 +1,11 @@
 //! Commands invoked from the frontend.
 
 use std::collections::HashMap;
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant, SystemTime};
 
 use scribe_core::asr::openai_api::{OpenAiAsr, ServerConfig};
 use scribe_core::asr::whisper::{list_gpus, GpuInfo};
@@ -228,6 +229,54 @@ const PLAYABLE: &[(&str, &str)] = &[
 /// Larger files (typically video) are transcoded to a compact audio-only copy instead.
 const MAX_DIRECT_BYTES: u64 = 150 * 1024 * 1024;
 
+/// Cached copies of interviews are confidential data, so they do not stay around forever.
+const PLAYBACK_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+fn playback_cache(app: &AppHandle) -> CmdResult<PathBuf> {
+    Ok(app.path().app_cache_dir().map_err(err)?.join("playback"))
+}
+
+/// Removes cached copies not used for `max_age`.
+fn prune_playback_cache(dir: &Path, max_age: Duration, now: SystemTime) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let modified = entry.metadata().and_then(|m| m.modified());
+        if modified.is_ok_and(|m| now.duration_since(m).is_ok_and(|age| age > max_age)) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+/// Runs at startup.
+pub fn prune_old_playback_copies(app: &AppHandle) {
+    if let Ok(dir) = playback_cache(app) {
+        prune_playback_cache(&dir, PLAYBACK_MAX_AGE, SystemTime::now());
+    }
+}
+
+/// Total size in bytes of the cached audio copies.
+#[tauri::command]
+pub fn playback_cache_size(app: AppHandle) -> CmdResult<u64> {
+    let Ok(entries) = std::fs::read_dir(playback_cache(&app)?) else {
+        return Ok(0);
+    };
+    Ok(entries
+        .flatten()
+        .filter_map(|e| e.metadata().ok())
+        .map(|m| m.len())
+        .sum())
+}
+
+#[tauri::command]
+pub fn clear_playback_cache(app: AppHandle) -> CmdResult<()> {
+    match std::fs::remove_dir_all(playback_cache(&app)?) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(err(e)),
+        _ => Ok(()),
+    }
+}
+
 /// Returns the audio for the editor as raw bytes; the first header line is its MIME type.
 ///
 /// Audio goes through IPC and plays from a `blob:` URL because WebKitGTK cannot reliably
@@ -250,7 +299,7 @@ pub async fn prepare_playback(
         .iter()
         .find(|(e, _)| *e == ext)
         .filter(|_| !force && size <= MAX_DIRECT_BYTES);
-    let cache = app.path().app_cache_dir().map_err(err)?.join("playback");
+    let cache = playback_cache(&app)?;
 
     let (path, mime) = match direct {
         Some((_, mime)) => (media, *mime),
@@ -262,7 +311,13 @@ pub async fn prepare_playback(
                     (h ^ b as u64).wrapping_mul(0x100000001b3)
                 });
             let dst = cache.join(format!("{key:016x}.ogg"));
-            if !dst.exists() {
+            if dst.exists() {
+                // Age counts from the last use.
+                let _ = File::options()
+                    .append(true)
+                    .open(&dst)
+                    .and_then(|f| f.set_modified(SystemTime::now()));
+            } else {
                 let dst = dst.clone();
                 tauri::async_runtime::spawn_blocking(move || audio::make_playback_copy(&media, &dst))
                     .await
@@ -278,4 +333,23 @@ pub async fn prepare_playback(
     out.push(b'\n');
     out.extend_from_slice(&data);
     Ok(tauri::ipc::Response::new(out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prunes_only_old_playback_copies() {
+        let dir = std::env::temp_dir().join(format!("scribe-prune-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.ogg");
+        std::fs::write(&file, b"x").unwrap();
+        let day = Duration::from_secs(86_400);
+        prune_playback_cache(&dir, day, SystemTime::now());
+        assert!(file.exists());
+        prune_playback_cache(&dir, day, SystemTime::now() + 2 * day);
+        assert!(!file.exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }

@@ -5,6 +5,29 @@
   let probing = $state(false);
   let probeResult = $state<{ ok: boolean; text: string } | null>(null);
 
+  let cacheBytes = $state<number | null>(null);
+  let cacheError = $state("");
+
+  async function refreshCache() {
+    try {
+      cacheBytes = await api.playbackCacheSize();
+    } catch (e) {
+      cacheError = errorText(e);
+    }
+  }
+
+  async function clearCache() {
+    cacheError = "";
+    try {
+      await api.clearPlaybackCache();
+    } catch (e) {
+      cacheError = errorText(e);
+    }
+    await refreshCache();
+  }
+
+  refreshCache();
+
   async function testNpu() {
     probing = true;
     probeResult = null;
@@ -94,6 +117,21 @@
       <dt>Models folder</dt>
       <dd><code>{app.info?.models_dir}</code></dd>
     </dl>
+  </section>
+
+  <section class="card">
+    <h2>Cached audio</h2>
+    <p class="muted">
+      Recordings the editor cannot play directly, and files over 150 MB, are converted to an audio copy kept on this
+      computer. Copies are deleted after 30 days without use. Your original recordings are never touched.
+    </p>
+    <div>
+      <button onclick={clearCache} disabled={!cacheBytes}>Delete cached audio</button>
+      <span class="muted small">
+        {cacheBytes === null ? "" : cacheBytes ? `${(cacheBytes / 1048576).toFixed(1)} MB in use` : "Nothing cached"}
+      </span>
+    </div>
+    {#if cacheError}<p class="small">{cacheError}</p>{/if}
   </section>
 </div>
 

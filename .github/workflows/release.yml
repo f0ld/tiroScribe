@@ -1,0 +1,32 @@
+# Pushing a tag like v0.1.0 builds the Linux AppImage and creates a draft release to review.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests
+        run: |
+          docker build -t tiroscribe-build packaging/linux
+          docker run --rm -v "$PWD:/src:ro" tiroscribe-build sh -c '
+            set -e
+            cp -r /src /tmp/src && cd /tmp/src
+            npm --prefix ui ci && npm --prefix ui test && npm --prefix ui run build
+            cargo test -p scribe-core && cargo test -p tiroscribe'
+      - name: Build AppImage
+        run: |
+          mkdir -p dist
+          docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" tiroscribe-build \
+            sh /src/packaging/linux/build-release.sh /src /out
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sudo chown -R "$USER" dist
+          gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag --title "tiroScribe $GITHUB_REF_NAME"

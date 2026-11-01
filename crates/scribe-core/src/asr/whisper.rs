@@ -14,15 +14,46 @@ use whisper_rs::{
 use super::{initial_prompt, AsrBackend, AsrOptions, AsrOutput, Device, Quality, RawWord};
 use crate::job::{JobCtx, Stage};
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct GpuInfo {
     pub index: i32,
     pub name: String,
     pub memory_mb: u64,
 }
 
-/// GPUs usable by whisper.cpp. Empty when built without the `vulkan` feature.
+/// Asks a child process to list the GPUs, see [`list_gpus`].
+const GPU_PROBE_ARG: &str = "--scribe-list-gpus";
+
+/// Lets a child process started by [`list_gpus`] do its work and exit. Every executable that
+/// calls `list_gpus` must call this first thing in `main`.
+pub fn handle_gpu_probe() {
+    if std::env::args().nth(1).as_deref() == Some(GPU_PROBE_ARG) {
+        println!("{}", serde_json::to_string(&query_gpus()).unwrap_or_default());
+        std::process::exit(0);
+    }
+}
+
+/// GPUs usable by whisper.cpp. Empty when built without the `vulkan` feature or if none work.
+///
+/// ggml throws an uncaught C++ exception from this query where no Vulkan driver is installed,
+/// which would abort the whole program, so it runs in a child process.
 pub fn list_gpus() -> Vec<GpuInfo> {
+    let output = std::env::current_exe()
+        .and_then(|exe| std::process::Command::new(exe).arg(GPU_PROBE_ARG).output());
+    match output {
+        Ok(out) if out.status.success() => serde_json::from_slice(&out.stdout).unwrap_or_default(),
+        Ok(out) => {
+            log::warn!("no usable Vulkan GPU ({})", out.status);
+            Vec::new()
+        }
+        Err(e) => {
+            log::warn!("could not check for GPUs: {e}");
+            Vec::new()
+        }
+    }
+}
+
+fn query_gpus() -> Vec<GpuInfo> {
     #[cfg(feature = "vulkan")]
     {
         whisper_rs::vulkan::list_devices()

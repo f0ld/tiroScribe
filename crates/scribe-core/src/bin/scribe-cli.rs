@@ -127,6 +127,7 @@ fn download(id: &str) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
+    whisper::handle_gpu_probe();
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
     whisper::install_logging();
     let cli = Cli::parse();
