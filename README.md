@@ -29,6 +29,18 @@ or add `--appimage-extract-and-run`). A GPU with Vulkan
 drivers is strongly recommended. The CPU works too, but is much slower. Allow about 2 GB of disk
 space for a model. Very long recordings have not been tested much yet.
 
+## Install (Windows)
+
+> **Windows support is new.** It is built and started automatically on a test machine, but
+> transcription and audio playback have not been tested on real Windows PCs yet.
+
+Download `tiroScribe_*_x64-setup.exe` from the [releases page](https://github.com/f0ld/tiroScribe/releases)
+and run it. The installer is not signed yet, so Windows may warn you: choose **More info → Run anyway**.
+You can compare the file with `SHA256SUMS` on the releases page first.
+
+Requirements: 64-bit Windows 10 or 11. The installer fetches Microsoft's WebView2 if it is missing. A
+GPU with Vulkan drivers is strongly recommended; without one, tiroScribe runs on the CPU, which is much slower.
+
 ## Features
 
 **Transcription**
@@ -114,7 +126,7 @@ cargo run --release -p scribe-core --features cli --bin scribe-cli -- \
 ## Privacy notes
 
 Recordings the editor cannot play directly, and files over 150 MB, are converted to an audio copy
-in the app's cache folder (`~/.cache/io.github.f0ld.tiroscribe/playback`). Copies are deleted after
+in the app's cache folder (on Linux `~/.cache/io.github.f0ld.tiroscribe/playback`). Copies are deleted after
 30 days without use, or at any time under **Settings → Cached audio**. Transcripts are saved where
 you choose, next to the recording by default.
 

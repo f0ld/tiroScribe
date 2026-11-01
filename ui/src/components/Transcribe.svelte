@@ -372,9 +372,14 @@
     padding: 2px 0;
   }
 
+  /* A long option must not widen its column. */
+  .grid select {
+    width: 100%;
+  }
+
   .grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 14px 16px;
     align-items: end;
   }
