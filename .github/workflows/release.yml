@@ -81,6 +81,9 @@ jobs:
       - name: Install Rust
         shell: bash
         run: rustup toolchain install 1.99.0 --profile minimal && rustup default 1.99.0
+      - name: Use the static C runtime in CMake builds
+        shell: bash
+        run: echo "CMAKE_TOOLCHAIN_FILE=$(cygpath -m "$PWD/packaging/windows/static-crt.cmake")" >> "$GITHUB_ENV"
       - name: Run tests
         shell: bash
         run: |
