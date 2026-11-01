@@ -28,6 +28,16 @@ const GPU_PROBE_ARG: &str = "--scribe-list-gpus";
 /// calls `list_gpus` must call this first thing in `main`.
 pub fn handle_gpu_probe() {
     if std::env::args().nth(1).as_deref() == Some(GPU_PROBE_ARG) {
+        // A crash here is an expected outcome and must not show the user an error dialog.
+        #[cfg(windows)]
+        unsafe {
+            extern "system" {
+                fn SetErrorMode(mode: u32) -> u32;
+            }
+            const SEM_FAILCRITICALERRORS: u32 = 0x0001;
+            const SEM_NOGPFAULTERRORBOX: u32 = 0x0002;
+            SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+        }
         println!("{}", serde_json::to_string(&query_gpus()).unwrap_or_default());
         std::process::exit(0);
     }
@@ -39,7 +49,7 @@ pub fn handle_gpu_probe() {
 /// which would abort the whole program, so it runs in a child process.
 pub fn list_gpus() -> Vec<GpuInfo> {
     let output = std::env::current_exe()
-        .and_then(|exe| std::process::Command::new(exe).arg(GPU_PROBE_ARG).output());
+        .and_then(|exe| crate::audio::background_command(exe).arg(GPU_PROBE_ARG).output());
     match output {
         Ok(out) if out.status.success() => serde_json::from_slice(&out.stdout).unwrap_or_default(),
         Ok(out) => {

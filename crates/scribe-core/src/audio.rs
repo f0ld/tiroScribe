@@ -40,8 +40,21 @@ fn tool(name: &str) -> PathBuf {
         .unwrap_or_else(|| PathBuf::from(file))
 }
 
+/// A command that runs without opening a console window on Windows.
+pub(crate) fn background_command(program: impl AsRef<std::ffi::OsStr>) -> Command {
+    #[allow(unused_mut)]
+    let mut cmd = Command::new(program);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
 pub fn check_ffmpeg() -> anyhow::Result<()> {
-    let ok = Command::new(tool("ffmpeg"))
+    let ok = background_command(tool("ffmpeg"))
         .arg("-version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -56,7 +69,7 @@ pub fn check_ffmpeg() -> anyhow::Result<()> {
 
 /// Duration of the media file in seconds, via `ffprobe`.
 pub fn probe_duration(path: &Path) -> anyhow::Result<f64> {
-    let out = Command::new(tool("ffprobe"))
+    let out = background_command(tool("ffprobe"))
         .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
         .arg(path)
         .output()
@@ -77,7 +90,7 @@ pub fn probe_duration(path: &Path) -> anyhow::Result<f64> {
 /// Decodes (a range of) any media file to 16 kHz mono f32.
 pub fn decode(path: &Path, range: TimeRange) -> anyhow::Result<Audio> {
     check_ffmpeg()?;
-    let mut cmd = Command::new(tool("ffmpeg"));
+    let mut cmd = background_command(tool("ffmpeg"));
     cmd.args(["-nostdin", "-hide_banner", "-loglevel", "error"]);
     let offset = range.start.unwrap_or(0.0).max(0.0);
     if offset > 0.0 {
@@ -128,7 +141,7 @@ pub fn make_playback_copy(src: &Path, dst: &Path) -> anyhow::Result<PathBuf> {
     if let Some(dir) = dst.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let out = Command::new(tool("ffmpeg"))
+    let out = background_command(tool("ffmpeg"))
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(src)
         .args(["-vn", "-ac", "1", "-c:a", "libopus", "-b:a", "48k"])

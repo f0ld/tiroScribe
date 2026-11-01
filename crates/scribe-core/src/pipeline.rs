@@ -155,7 +155,7 @@ pub fn run(spec: &JobSpec, engines: &mut Engines, job: &JobCtx) -> anyhow::Resul
     let transcript = Transcript {
         version: FORMAT_VERSION,
         media: MediaInfo {
-            path: std::fs::canonicalize(&spec.media)
+            path: dunce::canonicalize(&spec.media)
                 .unwrap_or_else(|_| spec.media.clone())
                 .to_string_lossy()
                 .into_owned(),

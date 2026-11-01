@@ -3123,6 +3123,7 @@ dependencies = [
  "anyhow",
  "clap",
  "dirs",
+ "dunce",
  "env_logger",
  "log",
  "serde",
@@ -4026,6 +4027,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dirs",
+ "dunce",
  "env_logger",
  "log",
  "scribe-core",

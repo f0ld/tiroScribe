@@ -14,6 +14,7 @@ log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 dirs = "7.0"
+dunce = "1.0"
 env_logger = "0.11"
 scribe-core = { path = "../crates/scribe-core" }
 tauri = { version = "2.12", features = [] }

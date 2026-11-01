@@ -2,6 +2,7 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { app } from "../lib/app.svelte";
   import { api, errorText } from "../lib/api";
+  import { fileName } from "../lib/format";
   import type { ExportFormat, Transcript } from "../lib/types";
 
   interface Props {
@@ -35,7 +36,7 @@
     try {
       await api.exportTranscript(transcript, format, $state.snapshot(opts), target);
       app.saveSettings();
-      app.notify(`Exported to ${target.split("/").pop()}`);
+      app.notify(`Exported to ${fileName(target)}`);
       onClose();
     } catch (e) {
       app.notify(errorText(e), true);

@@ -16,6 +16,9 @@ Linked into or shipped with the program, beyond the packages listed below:
   (MIT), kaldi-native-fbank (Apache-2.0), OpenFst (Apache-2.0), kissfft (BSD-3-Clause),
   piper-phonemize (MIT) and espeak-ng (GPL-3.0-or-later).
 
+On Windows also: Vulkan Loader (Apache-2.0, see VulkanRT-License.txt), and the Microsoft C
+runtime, linked statically under the Visual Studio redistribution terms.
+
 Models are not included. They are downloaded on request, under their own licences:
 - Whisper (MIT), primeLine German fine-tune (Apache-2.0), Silero VAD (MIT),
   pyannote segmentation 3.0 (MIT), 3D-Speaker CAM++ (Apache-2.0).

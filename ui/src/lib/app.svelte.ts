@@ -1,6 +1,7 @@
 // Global reactive app state (Svelte 5 runes).
 
 import { api, errorText, onDownloadFinished, onDownloadProgress, onJobUpdated } from "./api";
+import { fileName } from "./format";
 import type { AppInfo, ExportOptions, JobSpec, JobView, ModelStatus, NpuConfig } from "./types";
 
 export type View = "transcribe" | "editor" | "models" | "settings";
@@ -88,7 +89,7 @@ class AppState {
       const i = this.jobs.findIndex((j) => j.id === job.id);
       if (i >= 0) this.jobs[i] = job;
       else this.jobs.push(job);
-      if (job.status === "done") this.notify(`Finished: ${job.spec.media.split("/").pop()}`);
+      if (job.status === "done") this.notify(`Finished: ${fileName(job.spec.media)}`);
       if (job.status === "failed") this.notify(job.error ?? "Transcription failed", true);
     });
     await onDownloadProgress((p) => {

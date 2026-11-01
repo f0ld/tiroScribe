@@ -25,7 +25,7 @@ fn main() {
             // `tiroscribe interview.scribe.json` opens the transcript in the editor.
             let initial = std::env::args().nth(1).filter(|a| a.ends_with(".json"));
             app.manage(commands::InitialFile(initial.map(|p| {
-                std::fs::canonicalize(&p)
+                dunce::canonicalize(&p)
                     .map(|c| c.to_string_lossy().into_owned())
                     .unwrap_or(p)
             })));

@@ -19,6 +19,7 @@ serde.workspace = true
 serde_json.workspace = true
 clap = { version = "4.6", features = ["derive"], optional = true }
 dirs = "7.0"
+dunce = "1.0"
 env_logger = { version = "0.11", optional = true }
 sha2 = "0.10"
 sherpa-onnx = { version = "=1.13.8", default-features = false, features = ["static"] }

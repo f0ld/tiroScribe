@@ -1,12 +1,15 @@
-# Pushing a tag like v0.1.0 builds the Linux AppImage and creates a draft release to review.
+# Pushing a tag like v0.1.0 builds every platform and creates a draft release to review.
+# Running it by hand ("Run workflow") builds and tests Windows only, without a release.
 name: Release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 permissions:
   contents: write
 jobs:
   linux:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -24,9 +27,105 @@ jobs:
           mkdir -p dist
           docker run --rm -v "$PWD:/src:ro" -v "$PWD/dist:/out" tiroscribe-build \
             sh /src/packaging/linux/build-release.sh /src /out
+          sudo chown -R "$USER" dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/*
+
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    env:
+      VULKAN_VERSION: 1.4.363.0
+      VULKAN_SDK: C:\VulkanSDK
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          install: >-
+            diffutils make tar xz mingw-w64-x86_64-curl mingw-w64-x86_64-gcc mingw-w64-x86_64-nasm
+            mingw-w64-x86_64-opus mingw-w64-x86_64-pkgconf
+      - name: Build ffmpeg
+        shell: msys2 {0}
+        env:
+          FFMPEG_EXTRA_CONFIGURE: --extra-ldflags=-static --enable-w32threads
+        run: sh packaging/linux/build-ffmpeg.sh "$PWD/ffmpeg-out"
+      - name: Install the Vulkan SDK and runtime
+        shell: pwsh
+        run: |
+          $base = "https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows"
+          function Fetch($name, $sha) {
+            Invoke-WebRequest "$base/$name" -OutFile $name
+            if ((Get-FileHash $name -Algorithm SHA256).Hash -ne $sha) { throw "checksum mismatch: $name" }
+          }
+          $sdk = "vulkansdk-windows-X64-$env:VULKAN_VERSION.exe"
+          Fetch $sdk '94A82D378F7A5E3E54C9DB7D2FB7016AF136E14AC0A18DBF0F2F67A36352D141'
+          Start-Process ".\$sdk" -Wait -ArgumentList "--root $env:VULKAN_SDK --accept-licenses --default-answer --confirm-command install"
+          $rt = "VulkanRT-X64-$env:VULKAN_VERSION-Components"
+          Fetch "$rt.zip" 'A25A927AA8B9F0371048F1861CF88AC3B9BC9B1FB332C42D897C8AB32695769A'
+          Expand-Archive "$rt.zip" vulkan-rt
+          New-Item -ItemType Directory -Force src-tauri\binaries | Out-Null
+          Copy-Item "vulkan-rt\$rt\x64\vulkan-1.dll" src-tauri\binaries\
+          Copy-Item "vulkan-rt\$rt\VulkanRT-License.txt" src-tauri\binaries\
+          "$env:VULKAN_SDK\Bin" | Add-Content $env:GITHUB_PATH
+          "$PWD\vulkan-rt\$rt\x64" | Add-Content $env:GITHUB_PATH
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+      - name: Install Rust
+        shell: bash
+        run: rustup toolchain install 1.99.0 --profile minimal && rustup default 1.99.0
+      - name: Run tests
+        shell: bash
+        run: |
+          npm --prefix ui ci
+          npm --prefix ui test
+          npm --prefix ui run build
+          cargo test -p scribe-core
+          cargo test -p tiroscribe
+      - name: Build installer
+        shell: bash
+        run: |
+          TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
+          cp ffmpeg-out/ffmpeg.exe "src-tauri/binaries/ffmpeg-$TRIPLE.exe"
+          cp ffmpeg-out/ffprobe.exe "src-tauri/binaries/ffprobe-$TRIPLE.exe"
+          python packaging/linux/third_party_licenses.py THIRD-PARTY-LICENSES.txt
+          ui/node_modules/.bin/tauri build --config src-tauri/tauri.release.windows.conf.json
+      - name: Install and start it
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem target\release\bundle\nsis\*-setup.exe).FullName
+          packaging\windows\smoke-test.ps1 $installer smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-smoke-test
+          path: smoke/*
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: target/release/bundle/nsis/*-setup.exe
+
+  release:
+    if: github.event_name == 'push'
+    needs: [linux, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "{linux,windows}"
+          merge-multiple: true
+          path: dist
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sudo chown -R "$USER" dist
-          gh release create "$GITHUB_REF_NAME" dist/* --draft --verify-tag --title "tiroScribe $GITHUB_REF_NAME"
+          cd dist
+          sha256sum ./*.AppImage ./*-setup.exe > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" ./* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
+            --title "tiroScribe $GITHUB_REF_NAME"
