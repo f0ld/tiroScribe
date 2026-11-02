@@ -12,6 +12,7 @@ use whisper_rs::{
 };
 
 use super::{initial_prompt, AsrBackend, AsrOptions, AsrOutput, Device, Quality, RawWord};
+use crate::audio::SAMPLE_RATE;
 use crate::job::{JobCtx, Stage};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -163,6 +164,52 @@ impl AsrBackend for WhisperAsr {
         opts: &AsrOptions,
         job: &JobCtx,
     ) -> anyhow::Result<AsrOutput> {
+        let (mut words, language) = self.decode(samples, opts, opts.language.as_deref(), true, job)?;
+
+        // Each window is decoded with the text before it as context, which lets a sentence
+        // repeat itself indefinitely. whisper.cpp only notices repeats within one window, so
+        // the affected audio is decoded again without context. That also drops the initial
+        // prompt there, but the alternative is losing the speech altogether.
+        let loops = find_loops(&words);
+        if !loops.is_empty() {
+            let total = samples.len() as f64 / SAMPLE_RATE as f64;
+            let mut fixed = Vec::with_capacity(words.len());
+            let mut kept = 0;
+            for (first, last) in loops {
+                let start = words[first].start;
+                let end = words.get(last).map_or(total, |w| w.start);
+                log::warn!("repeated text at {start:.1}-{end:.1} s, decoding that part again");
+                let at = |t: f64| ((t * SAMPLE_RATE as f64) as usize).min(samples.len());
+                let (retry, _) =
+                    self.decode(&samples[at(start)..at(end)], opts, Some(&language), false, job)?;
+                fixed.extend_from_slice(&words[kept..first]);
+                fixed.extend(retry.into_iter().map(|mut w| {
+                    w.start += start;
+                    w.end += start;
+                    w
+                }));
+                kept = last;
+            }
+            fixed.extend_from_slice(&words[kept..]);
+            words = fixed;
+            if !find_loops(&words).is_empty() {
+                log::warn!("repeated text remains after decoding again");
+            }
+        }
+        Ok(AsrOutput { words, language })
+    }
+}
+
+impl WhisperAsr {
+    /// Runs whisper.cpp once. Returns the words and the detected or forced language.
+    fn decode(
+        &self,
+        samples: &[f32],
+        opts: &AsrOptions,
+        language: Option<&str>,
+        use_context: bool,
+        job: &JobCtx,
+    ) -> anyhow::Result<(Vec<RawWord>, String)> {
         let mut state = self.ctx.create_state().map_err(|e| anyhow!("{e}"))?;
 
         let strategy = match opts.quality {
@@ -174,12 +221,15 @@ impl AsrBackend for WhisperAsr {
         };
         let mut params = FullParams::new(strategy);
         params.set_n_threads(opts.threads.max(1));
-        params.set_language(Some(opts.language.as_deref().unwrap_or("auto")));
+        params.set_language(Some(language.unwrap_or("auto")));
         params.set_token_timestamps(true);
         params.set_print_progress(false);
         params.set_print_realtime(false);
         params.set_print_special(false);
         params.set_print_timestamps(false);
+        if !use_context {
+            params.set_n_max_text_ctx(0);
+        }
         let prompt = initial_prompt(opts);
         if !prompt.is_empty() {
             params.set_initial_prompt(&prompt);
@@ -206,9 +256,50 @@ impl AsrBackend for WhisperAsr {
             .unwrap_or("und")
             .to_string();
         let eot = self.ctx.token_eot();
-        let words = collect_words(&state, eot);
-        Ok(AsrOutput { words, language })
+        Ok((collect_words(&state, eot), language))
     }
+}
+
+/// Longest phrase, in words, that [`find_loops`] looks for.
+const LOOP_MAX_PHRASE: usize = 60;
+/// Loops this close together, in words, are treated as one.
+const LOOP_MERGE_GAP: usize = 5;
+
+/// Word ranges `first..last` where the same phrase repeats more than people normally do.
+/// People do say "sehr, sehr, sehr" or restart a few words. A false match only costs time,
+/// since the audio is decoded again and real repetition comes back.
+fn find_loops(words: &[RawWord]) -> Vec<(usize, usize)> {
+    let keys: Vec<String> = words
+        .iter()
+        .map(|w| w.text.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect())
+        .collect();
+    let mut loops: Vec<(usize, usize)> = Vec::new();
+    let mut i = 0;
+    while i < keys.len() {
+        let mut longest = 0;
+        for n in 1..=LOOP_MAX_PHRASE.min((keys.len() - i) / 2) {
+            let mut reps = 1;
+            while keys.get(i + (reps + 1) * n - 1).is_some()
+                && keys[i..i + n] == keys[i + reps * n..i + (reps + 1) * n]
+            {
+                reps += 1;
+            }
+            let looping = (n >= 5 && reps >= 2) || (n >= 3 && reps >= 3) || reps >= 8;
+            if looping {
+                longest = longest.max(n * reps);
+            }
+        }
+        if longest == 0 {
+            i += 1;
+            continue;
+        }
+        match loops.last_mut() {
+            Some(prev) if i - prev.1 <= LOOP_MERGE_GAP => prev.1 = i + longest,
+            _ => loops.push((i, i + longest)),
+        }
+        i += longest;
+    }
+    loops
 }
 
 unsafe extern "C" fn abort_if_cancelled(user_data: *mut c_void) -> bool {
@@ -324,6 +415,32 @@ mod tests {
             end: start,
             conf: 1.0,
         }
+    }
+
+    fn text(s: &str) -> Vec<RawWord> {
+        s.split_whitespace()
+            .map(|t| RawWord { text: t.into(), start: 0.0, end: 0.0, conf: 1.0 })
+            .collect()
+    }
+
+    #[test]
+    fn finds_repeated_sentences() {
+        let looped = format!("Das war so. {} Ende.", "Der Hund läuft durch den Park. ".repeat(4));
+        assert_eq!(find_loops(&text(&looped)), [(3, 27)]);
+    }
+
+    #[test]
+    fn merges_loops_next_to_each_other() {
+        let a = "eins zwei drei vier fünf ".repeat(2);
+        let b = "sechs sieben acht neun zehn ".repeat(2);
+        assert_eq!(find_loops(&text(&format!("{a}{b}"))), [(0, 20)]);
+    }
+
+    #[test]
+    fn keeps_normal_repetition() {
+        assert!(find_loops(&text("sehr, sehr, sehr, sehr gut")).is_empty());
+        assert!(find_loops(&text("ich weiß nicht, ich weiß nicht, was das ist")).is_empty());
+        assert!(find_loops(&text("ja ja ja nein")).is_empty());
     }
 
     #[test]
