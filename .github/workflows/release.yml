@@ -1,5 +1,5 @@
 # Pushing a tag like v0.1.0 builds every platform and creates a draft release to review.
-# Running it by hand ("Run workflow") builds and tests Windows only, without a release.
+# Running it by hand ("Run workflow") builds and tests Windows and macOS only, without a release.
 name: Release
 on:
   push:
@@ -113,14 +113,67 @@ jobs:
           name: windows
           path: C:\t\release\bundle\nsis\*-setup.exe
 
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 120
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build ffmpeg
+        env:
+          FFMPEG_EXTRA_CONFIGURE: --enable-encoder=aac --enable-muxer=ipod
+        run: |
+          brew install coreutils opus pkg-config
+          # The linker prefers a dylib next to the static library, and users do not have Homebrew's.
+          OPUS=$(brew --prefix opus)
+          mkdir -p opus-static/lib/pkgconfig
+          cp "$OPUS"/lib/libopus.a opus-static/lib/
+          cp -R "$OPUS"/include opus-static/
+          sed "s|^prefix=.*|prefix=$PWD/opus-static|; s|^libdir=.*|libdir=$PWD/opus-static/lib|; s|^includedir=.*|includedir=$PWD/opus-static/include|" \
+            "$OPUS"/lib/pkgconfig/opus.pc > opus-static/lib/pkgconfig/opus.pc
+          PKG_CONFIG_PATH="$PWD/opus-static/lib/pkgconfig" sh packaging/linux/build-ffmpeg.sh "$PWD/ffmpeg-out"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.1
+      - name: Install Rust
+        run: rustup toolchain install 1.99.0 --profile minimal && rustup default 1.99.0
+      - name: Run tests
+        run: |
+          npm --prefix ui ci
+          npm --prefix ui test
+          npm --prefix ui run build
+          cargo test --release -p scribe-core
+          cargo test --release -p tiroscribe
+      - name: Build disk image
+        run: |
+          TRIPLE=$(rustc -vV | sed -n 's/^host: //p')
+          mkdir -p src-tauri/binaries
+          cp ffmpeg-out/ffmpeg "src-tauri/binaries/ffmpeg-$TRIPLE"
+          cp ffmpeg-out/ffprobe "src-tauri/binaries/ffprobe-$TRIPLE"
+          python3 packaging/linux/third_party_licenses.py THIRD-PARTY-LICENSES.txt
+          ui/node_modules/.bin/tauri build --config src-tauri/tauri.release.macos.conf.json
+      - name: Install and start it
+        run: sh packaging/macos/smoke-test.sh target/release/bundle/dmg/*.dmg smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-smoke-test
+          path: smoke/*
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: target/release/bundle/dmg/*.dmg
+
   release:
     if: github.event_name == 'push'
-    needs: [linux, windows]
+    needs: [linux, windows, macos]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/download-artifact@v4
         with:
-          pattern: "{linux,windows}"
+          pattern: "{linux,windows,macos}"
           merge-multiple: true
           path: dist
       - name: Create draft release
@@ -128,6 +181,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cd dist
-          sha256sum ./*.AppImage ./*-setup.exe > SHA256SUMS
+          sha256sum ./*.AppImage ./*-setup.exe ./*.dmg > SHA256SUMS
           gh release create "$GITHUB_REF_NAME" ./* --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
             --title "tiroScribe $GITHUB_REF_NAME"

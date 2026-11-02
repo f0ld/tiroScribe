@@ -6,9 +6,6 @@ license.workspace = true
 description = "Transcription, diarization and export pipeline for tiroScribe"
 
 [features]
-default = ["vulkan"]
-# GPU acceleration for Whisper via ggml's Vulkan backend (AMD, Intel, NVIDIA).
-vulkan = ["whisper-rs/vulkan"]
 # Headless command line front end (`scribe-cli`), handy for batch jobs and servers.
 cli = ["dep:clap", "dep:env_logger"]
 
@@ -26,6 +23,13 @@ sherpa-onnx = { version = "=1.13.8", default-features = false, features = ["stat
 thiserror = "2.0"
 ureq = { version = "3.5", features = ["json"] }
 whisper-rs = { version = "0.16", features = ["log_backend"] }
+
+# GPU acceleration for Whisper: Metal on macOS, Vulkan elsewhere (AMD, Intel, NVIDIA).
+[target.'cfg(target_os = "macos")'.dependencies]
+whisper-rs = { version = "0.16", features = ["metal"] }
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+whisper-rs = { version = "0.16", features = ["vulkan"] }
 
 [[bin]]
 name = "scribe-cli"

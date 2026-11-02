@@ -104,7 +104,7 @@
     <dl>
       <dt>Version</dt>
       <dd>{app.info?.version}</dd>
-      <dt>GPUs (Vulkan)</dt>
+      <dt>GPUs</dt>
       <dd>
         {#each app.info?.gpus ?? [] as g (g.index)}
           <div>{g.name}</div>

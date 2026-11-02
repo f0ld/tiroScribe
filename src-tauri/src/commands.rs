@@ -281,7 +281,7 @@ pub fn clear_playback_cache(app: AppHandle) -> CmdResult<()> {
 ///
 /// Audio goes through IPC and plays from a `blob:` URL because WebKitGTK cannot reliably
 /// stream media from custom URL schemes. Unsupported or large media (e.g. video) is
-/// transcoded once to Ogg/Opus in the cache directory; `force` does that for any format.
+/// transcoded once to a compact audio file in the cache directory; `force` does that for any format.
 #[tauri::command]
 pub async fn prepare_playback(
     app: AppHandle,
@@ -310,7 +310,7 @@ pub async fn prepare_playback(
                 .fold(0xcbf29ce484222325u64, |h, b| {
                     (h ^ b as u64).wrapping_mul(0x100000001b3)
                 });
-            let dst = cache.join(format!("{key:016x}.ogg"));
+            let dst = cache.join(format!("{key:016x}.{}", audio::PLAYBACK_EXT));
             if dst.exists() {
                 // Age counts from the last use.
                 let _ = File::options()
@@ -324,7 +324,7 @@ pub async fn prepare_playback(
                     .map_err(err)?
                     .map_err(|e| format!("{e:#}"))?;
             }
-            (dst, "audio/ogg")
+            (dst, audio::PLAYBACK_MIME)
         }
     };
     let data = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;

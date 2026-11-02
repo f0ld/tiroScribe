@@ -134,8 +134,14 @@ pub fn decode(path: &Path, range: TimeRange) -> anyhow::Result<Audio> {
     Ok(Audio { samples, offset })
 }
 
-/// Transcodes media into an Ogg/Opus file the editor's web view can always play
-/// (WebKitGTK may lack codecs for e.g. AAC or WMA).
+/// File extension of playback copies. WebKitGTK may lack codecs for e.g. AAC or WMA, and the web
+/// view on macOS only plays Ogg/Opus from 15.4 on.
+pub const PLAYBACK_EXT: &str = if cfg!(target_os = "macos") { "m4a" } else { "ogg" };
+/// MIME type of playback copies.
+pub const PLAYBACK_MIME: &str = if cfg!(target_os = "macos") { "audio/mp4" } else { "audio/ogg" };
+const PLAYBACK_CODEC: &str = if cfg!(target_os = "macos") { "aac" } else { "libopus" };
+
+/// Transcodes media into an audio file the editor's web view can always play.
 pub fn make_playback_copy(src: &Path, dst: &Path) -> anyhow::Result<PathBuf> {
     check_ffmpeg()?;
     if let Some(dir) = dst.parent() {
@@ -144,7 +150,7 @@ pub fn make_playback_copy(src: &Path, dst: &Path) -> anyhow::Result<PathBuf> {
     let out = background_command(tool("ffmpeg"))
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(src)
-        .args(["-vn", "-ac", "1", "-c:a", "libopus", "-b:a", "48k"])
+        .args(["-vn", "-ac", "1", "-c:a", PLAYBACK_CODEC, "-b:a", "48k"])
         .arg(dst)
         .output()
         .context("running ffmpeg")?;

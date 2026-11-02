@@ -41,13 +41,25 @@ You can compare the file with `SHA256SUMS` on the releases page first.
 Requirements: 64-bit Windows 10 or 11. The installer fetches Microsoft's WebView2 if it is missing. A
 GPU with Vulkan drivers is strongly recommended; without one, tiroScribe runs on the CPU, which is much slower.
 
+## Install (macOS)
+
+> **macOS support is new.** It is built and started automatically on a test machine, but
+> transcription and audio playback have not been tested on real Macs yet.
+
+Download `tiroScribe_*_aarch64.dmg` from the [releases page](https://github.com/f0ld/tiroScribe/releases),
+open it and drag tiroScribe to Applications. The app is not notarized yet, so macOS blocks it at first:
+try to open it, then choose **System Settings → Privacy & Security → Open Anyway**.
+You can compare the file with `SHA256SUMS` on the releases page first.
+
+Requirements: a Mac with Apple silicon (M1 or newer) and macOS 14 or newer. Intel Macs are not supported.
+
 ## Features
 
 **Transcription**
 - Whisper large-v3 (turbo) via whisper.cpp – about 100 languages, plus a German fine-tune
   (primeLine; its authors report 4.77 % WER on their test set) as the recommended model for
   German interviews
-- Runs on the **GPU** (Vulkan: AMD, Intel, NVIDIA), the **CPU**, or the **NPU** through a local
+- Runs on the **GPU** (Vulkan: AMD, Intel, NVIDIA; Metal on Macs), the **CPU**, or the **NPU** through a local
   OpenAI-compatible server (AMD Ryzen AI via Lemonade/FastFlowLM – experimental)
 - **Speaker detection** (pyannote segmentation 3.0 + 3D-Speaker CAM++ embeddings, via sherpa-onnx);
   give the number of speakers for best results, or let it estimate
@@ -126,7 +138,7 @@ cargo run --release -p scribe-core --features cli --bin scribe-cli -- \
 ## Privacy notes
 
 Recordings the editor cannot play directly, and files over 150 MB, are converted to an audio copy
-in the app's cache folder (on Linux `~/.cache/io.github.f0ld.tiroscribe/playback`). Copies are deleted after
+in the app's cache folder (on Linux `~/.cache/io.github.f0ld.tiroscribe/playback`, on macOS `~/Library/Caches/io.github.f0ld.tiroscribe/playback`). Copies are deleted after
 30 days without use, or at any time under **Settings → Cached audio**. Transcripts are saved where
 you choose, next to the recording by default.
 
@@ -163,7 +175,7 @@ like another speaker. `examples/realign.rs` and `examples/voicecheck.rs` re-run 
 crates/scribe-core     Rust library + scribe-cli
   audio.rs             ffmpeg decoding to 16 kHz mono, playback copies
   vad.rs               speech detection; packs speech, maps timestamps back exactly
-  asr/whisper.rs       whisper.cpp (CPU / Vulkan GPU), word timing & confidence
+  asr/whisper.rs       whisper.cpp (CPU / Vulkan or Metal GPU), word timing & confidence
   asr/openai_api.rs    NPU / server backend
   diarize.rs           sherpa-onnx pyannote + embedding clustering
   align.rs             words → speaker turns (overlap, sentence-aware gap handling)

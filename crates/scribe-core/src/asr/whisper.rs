@@ -1,4 +1,4 @@
-//! Local Whisper inference via whisper.cpp (CPU, or GPU through Vulkan).
+//! Local Whisper inference via whisper.cpp (CPU, or GPU through Metal or Vulkan).
 
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
@@ -44,7 +44,7 @@ pub fn handle_gpu_probe() {
     }
 }
 
-/// GPUs usable by whisper.cpp. Empty when built without the `vulkan` feature or if none work.
+/// GPUs usable by whisper.cpp. Empty if none work.
 ///
 /// ggml throws an uncaught C++ exception from this query where no Vulkan driver is installed,
 /// which would abort the whole program, so it runs in a child process.
@@ -54,7 +54,7 @@ pub fn list_gpus() -> Vec<GpuInfo> {
     match output {
         Ok(out) if out.status.success() => serde_json::from_slice(&out.stdout).unwrap_or_default(),
         Ok(out) => {
-            log::warn!("no usable Vulkan GPU ({})", out.status);
+            log::warn!("no usable GPU ({})", out.status);
             Vec::new()
         }
         Err(e) => {
@@ -65,7 +65,7 @@ pub fn list_gpus() -> Vec<GpuInfo> {
 }
 
 fn query_gpus() -> Vec<GpuInfo> {
-    #[cfg(feature = "vulkan")]
+    #[cfg(not(target_os = "macos"))]
     {
         whisper_rs::vulkan::list_devices()
             .into_iter()
@@ -76,9 +76,10 @@ fn query_gpus() -> Vec<GpuInfo> {
             })
             .collect()
     }
-    #[cfg(not(feature = "vulkan"))]
+    // Metal has no device list here, and Apple silicon Macs have one GPU sharing the main memory.
+    #[cfg(target_os = "macos")]
     {
-        Vec::new()
+        vec![GpuInfo { index: 0, name: "Apple GPU (Metal)".to_string(), memory_mb: 0 }]
     }
 }
 
@@ -116,9 +117,6 @@ impl WhisperAsr {
                 params.use_gpu(false);
             }
             Device::Gpu { index } => {
-                if !cfg!(feature = "vulkan") {
-                    anyhow::bail!("this build of tiroScribe has no GPU support");
-                }
                 params.use_gpu(true).gpu_device(*index);
                 // Flash attention speeds up GPUs but excludes DTW timing, which matters more
                 // here. It also changes some recognised words, neither clearly better nor worse.

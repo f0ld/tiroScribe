@@ -1,0 +1,11 @@
+{
+  "bundle": {
+    "targets": ["dmg"],
+    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"],
+    "resources": { "../THIRD-PARTY-LICENSES.txt": "THIRD-PARTY-LICENSES.txt" },
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "-"
+    }
+  }
+}
