@@ -10,8 +10,10 @@ TARBALL=ffmpeg-$VERSION.tar.xz
 
 mkdir -p "$OUT" /tmp/ffmpeg-build
 cd /tmp/ffmpeg-build
-# ffmpeg.org is sometimes unreachable for minutes at a time.
-curl -fsSLO --retry 8 --retry-all-errors --retry-delay 45 --connect-timeout 30 "https://ffmpeg.org/releases/$TARBALL"
+# ffmpeg.org is sometimes unreachable for a long time, so a copy is kept on this project's releases.
+curl -fsSLO --retry 3 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
+    "https://github.com/f0ld/tiroScribe/releases/download/ffmpeg-$VERSION/$TARBALL" ||
+  curl -fsSLO --retry 8 --retry-all-errors --retry-delay 45 --connect-timeout 30 "https://ffmpeg.org/releases/$TARBALL"
 echo "$SHA256  $TARBALL" | sha256sum -c -
 tar -xJf "$TARBALL"
 cd "ffmpeg-$VERSION"
