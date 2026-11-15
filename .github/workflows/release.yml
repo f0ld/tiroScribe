@@ -114,7 +114,7 @@ jobs:
           path: C:\t\release\bundle\nsis\*-setup.exe
 
   macos:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 120
     env:
       MACOSX_DEPLOYMENT_TARGET: "14.0"
