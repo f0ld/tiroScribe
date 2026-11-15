@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from "svelte";
+  import { tick, untrack } from "svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import { app } from "../lib/app.svelte";
   import { api, errorText } from "../lib/api";
@@ -35,7 +35,7 @@
     canUndo = history.canUndo;
     canRedo = history.canRedo;
   }
-  let editing = $state<{ seg: number; word: number } | null>(null);
+  let editing = $state<{ seg: number; caret: number } | null>(null);
   let focus = $state<Match | null>(null);
   let showExport = $state(false);
   let scroller = $state<HTMLElement | null>(null);
@@ -50,6 +50,9 @@
   let paused = $state(true);
   let rate = $state(1);
   let rewindPending = false;
+  // Set when the user scrolls the text by hand; following playback waits until they come back.
+  let followPaused = $state(false);
+  const detached = $derived(app.settings.editor.detached);
 
   // ---- search ---------------------------------------------------------------------------
   let searchOpen = $state(false);
@@ -201,6 +204,7 @@
     audio.currentTime = Math.max(0, time);
     currentTime = audio.currentTime;
     rewindPending = false;
+    followPaused = false;
     if (play && audio.paused) audio.play();
   }
 
@@ -236,7 +240,8 @@
     return () => cancelAnimationFrame(id);
   });
 
-  const activeSeg = $derived.by(() => {
+  /** The last paragraph starting at or before the playback position, or -1. */
+  const lastStarted = $derived.by(() => {
     if (!t) return -1;
     const segs = t.segments;
     let lo = 0;
@@ -249,8 +254,10 @@
         lo = mid + 1;
       } else hi = mid - 1;
     }
-    return found >= 0 && currentTime <= segs[found].end + 1 ? found : -1;
+    return found;
   });
+
+  const activeSeg = $derived(lastStarted >= 0 && t && currentTime <= t.segments[lastStarted].end + 1 ? lastStarted : -1);
 
   const activeWord = $derived(activeSeg >= 0 && t ? wordAt(t.segments[activeSeg], currentTime + 0.05) : -1);
 
@@ -263,9 +270,30 @@
     if (!onlyIfHidden || hidden) el.scrollIntoView({ block: "center", behavior: "smooth" });
   }
 
+  // Scroll only when playback moves on to another paragraph — not when an edit ends or a setting changes,
+  // which used to yank the view away from the paragraph just edited.
   $effect(() => {
-    if (activeSeg >= 0 && !paused && !editing && app.settings.editor.followPlayback) scrollToSeg(activeSeg, true);
+    const seg = activeSeg;
+    untrack(() => {
+      const follow = app.settings.editor.followPlayback && !detached && !followPaused;
+      if (seg >= 0 && follow && !paused && !editing) scrollToSeg(seg, true);
+    });
   });
+
+  function onManualScroll() {
+    if (!detached && app.settings.editor.followPlayback) followPaused = true;
+  }
+
+  function backToPlayback() {
+    followPaused = false;
+    if (lastStarted >= 0) scrollToSeg(lastStarted, false);
+  }
+
+  function setDetached(on: boolean) {
+    app.settings.editor.detached = on;
+    app.saveSettings();
+    followPaused = false;
+  }
 
   // ---- search & uncertain words -----------------------------------------------------------
   const matches = $derived(searchOpen && t && query.trim().length >= 2 ? search(t, query) : []);
@@ -338,6 +366,8 @@
     if (e.key === "F9") return handled(), stepUncertain(e.shiftKey ? -1 : 1);
     if (ctrl && e.key === "s") return handled(), saveNow();
     if (ctrl && e.key === "f") return handled(), openSearch();
+    if (ctrl && e.key === "d") return handled(), setDetached(!detached);
+    if (ctrl && e.key === "j") return handled(), backToPlayback();
     if (e.key === "Escape" && searchOpen && !editing) return handled(), (searchOpen = false);
     if (inField) return;
     if (ctrl && e.key === "ArrowLeft") return handled(), skip(-5);
@@ -412,10 +442,19 @@
           {/each}
         </select>
       </label>
-      <label class="inline small">
-        <input type="checkbox" bind:checked={app.settings.editor.followPlayback} onchange={() => app.saveSettings()} />
-        Follow
-      </label>
+      <div class="modes" role="group" aria-label="Text and audio">
+        <button class="ghost small" aria-pressed={!detached} onclick={() => setDetached(false)} title="Click a word to play from there (Ctrl+D)">Linked</button>
+        <button class="ghost small" aria-pressed={detached} onclick={() => setDetached(true)} title="Listen and type: click edits, Ctrl+click plays, nothing scrolls by itself (Ctrl+D)">Detached</button>
+      </div>
+      {#if !detached}
+        <label class="inline small" title="Scroll along with playback">
+          <input type="checkbox" bind:checked={app.settings.editor.followPlayback} onchange={() => app.saveSettings()} />
+          Follow
+        </label>
+      {/if}
+      {#if detached || (followPaused && app.settings.editor.followPlayback)}
+        <button class="ghost small" onclick={backToPlayback} disabled={lastStarted < 0} title="Show the paragraph being played (Ctrl+J)">Show playback</button>
+      {/if}
       {#if audioSrc}
         <audio
           bind:this={audio}
@@ -457,7 +496,14 @@
     {/if}
 
     <div class="body">
-      <div class="scroller" bind:this={scroller}>
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="scroller"
+        bind:this={scroller}
+        onwheel={onManualScroll}
+        ontouchmove={onManualScroll}
+        onpointerdown={(e) => e.target === scroller && onManualScroll()}
+      >
         <div class="paper">
           {#each t.segments as seg, i (i)}
             <Paragraph
@@ -469,9 +515,10 @@
               matches={matchesBySeg.get(i)}
               focusWord={focus?.seg === i ? focus.word : -1}
               editing={editing?.seg === i}
-              caretWord={editing?.seg === i ? editing.word : 0}
+              caret={editing?.seg === i ? editing.caret : 0}
+              {detached}
               onSeek={(time) => seek(time)}
-              onStartEdit={(word) => (editing = { seg: i, word })}
+              onStartEdit={(caret) => (editing = { seg: i, caret })}
               onCommit={(text, splitAt) => onCommitText(i, text, splitAt)}
               onCancel={() => (editing = null)}
               onSpeaker={(id) => setSpeaker(i, id)}
@@ -533,10 +580,17 @@
             <dt><kbd>F3</kbd> <kbd>F5</kbd></dt><dd>Back / forward 5 s</dd>
             <dt><kbd>F7</kbd> <kbd>F8</kbd></dt><dd>Slower / faster</dd>
             <dt><kbd>F9</kbd></dt><dd>Next uncertain word</dd>
-            <dt>Click word</dt><dd>Play from there</dd>
-            <dt>Double-click</dt><dd>Edit paragraph</dd>
+            {#if detached}
+              <dt>Click</dt><dd>Edit here</dd>
+              <dt><kbd>Ctrl</kbd>+click</dt><dd>Play from there</dd>
+            {:else}
+              <dt>Click word</dt><dd>Play from there</dd>
+              <dt>Double-click</dt><dd>Edit paragraph</dd>
+            {/if}
             <dt><kbd>Alt</kbd>+click</dt><dd>New paragraph here</dd>
             <dt><kbd>Ctrl</kbd>+<kbd>F</kbd></dt><dd>Search & replace</dd>
+            <dt><kbd>Ctrl</kbd>+<kbd>D</kbd></dt><dd>Linked / detached</dd>
+            <dt><kbd>Ctrl</kbd>+<kbd>J</kbd></dt><dd>Show playback</dd>
           </dl>
         </section>
 
@@ -637,6 +691,23 @@
   .seek {
     flex: 1;
     accent-color: var(--accent);
+  }
+
+  .modes {
+    display: flex;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .modes button {
+    padding: 2px 8px;
+  }
+
+  .modes button[aria-pressed="true"] {
+    background: var(--accent-soft);
+    color: var(--accent-strong);
   }
 
   .notice {

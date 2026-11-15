@@ -16,9 +16,12 @@
     /** Word index of the focused search match / uncertain word, or -1. */
     focusWord: number;
     editing: boolean;
-    caretWord: number;
+    /** Character offset in the paragraph text to put the caret at when editing starts. */
+    caret: number;
+    /** Text and audio decoupled: a click edits, Ctrl+click plays. */
+    detached: boolean;
     onSeek: (time: number) => void;
-    onStartEdit: (word: number) => void;
+    onStartEdit: (caret: number) => void;
     onCommit: (text: string, splitAtWord: number | null) => void;
     onCancel: () => void;
     onSpeaker: (id: string | null) => void;
@@ -35,7 +38,8 @@
     matches,
     focusWord,
     editing,
-    caretWord,
+    caret,
+    detached,
     onSeek,
     onStartEdit,
     onCommit,
@@ -71,18 +75,35 @@
       draft = segmentText(seg);
       tick().then(() => {
         if (!textarea) return;
-        textarea.focus();
+        // The textarea sits where the text was; scrolling to it would only move the page.
+        textarea.focus({ preventScroll: true });
         autosize();
-        const offset = seg.words.slice(0, Math.max(0, caretWord)).reduce((n, w) => n + w.text.length + 1, 0);
-        textarea.setSelectionRange(offset, offset);
+        textarea.setSelectionRange(caret, caret);
       });
     }
   });
 
   function autosize() {
     if (!textarea) return;
+    // Collapsing the height for a moment can clamp the scroll position near the end; restore it.
+    const scroller = textarea.closest<HTMLElement>(".scroller");
+    const top = scroller?.scrollTop ?? 0;
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
+    if (scroller) scroller.scrollTop = top;
+  }
+
+  function wordOffset(i: number): number {
+    return seg.words.slice(0, Math.max(0, i)).reduce((n, w) => n + w.text.length + 1, 0);
+  }
+
+  /** Offset in the paragraph text of the clicked point, so the caret lands where the user clicked. */
+  function caretAt(e: MouseEvent, fallbackWord: number): number {
+    const pos = document.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const span = pos?.startContainer.parentElement?.closest<HTMLElement>("[data-word]");
+    if (!pos || !span) return wordOffset(fallbackWord);
+    const i = Number(span.dataset.word);
+    return wordOffset(i) + Math.min(pos.startOffset, seg.words[i].text.length);
   }
 
   function onKey(e: KeyboardEvent) {
@@ -100,13 +121,31 @@
     }
   }
 
+  // A double-click starts with a click; wait a moment so editing doesn't also start playback.
+  let clickTimer: ReturnType<typeof setTimeout> | undefined;
+
   function wordClick(e: MouseEvent, i: number) {
-    if (e.altKey) onSplit(i);
-    else onSeek(seg.words[i].start);
+    clearTimeout(clickTimer);
+    if (e.altKey) return onSplit(i);
+    if (detached && !(e.ctrlKey || e.metaKey)) return onStartEdit(caretAt(e, i));
+    if (e.detail > 1) return;
+    const time = seg.words[i].start;
+    clickTimer = setTimeout(() => onSeek(time), 250);
+  }
+
+  function wordDblclick(e: MouseEvent, i: number) {
+    e.stopPropagation();
+    clearTimeout(clickTimer);
+    onStartEdit(caretAt(e, i));
+  }
+
+  // Ignore the blur from switching to another window, so an edit survives looking something up.
+  function onBlur() {
+    if (document.hasFocus()) commit(null);
   }
 </script>
 
-<div class="para" class:playing={activeWord >= 0} data-index={index} style:--speaker={color}>
+<div class="para" class:detached class:playing={activeWord >= 0} data-index={index} style:--speaker={color}>
   <div class="meta">
     <select
       class="speaker"
@@ -134,14 +173,18 @@
       bind:value={draft}
       oninput={autosize}
       onkeydown={onKey}
-      onblur={() => commit(null)}
+      onblur={onBlur}
       spellcheck="true"
       lang="de"
     ></textarea>
     <p class="hint small muted"><kbd>Enter</kbd> save · <kbd>Alt</kbd>+<kbd>Enter</kbd> split here · <kbd>Esc</kbd> cancel</p>
   {:else}
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <p class="text" ondblclick={() => onStartEdit(activeWord >= 0 ? activeWord : 0)}>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
+    <p
+      class="text"
+      onclick={(e) => detached && e.target === e.currentTarget && onStartEdit(caretAt(e, seg.words.length))}
+      ondblclick={(e) => onStartEdit(caretAt(e, activeWord >= 0 ? activeWord : 0))}
+    >
       {#each seg.words as w, i (i)}<span
           class="word"
           class:active={i === activeWord}
@@ -149,11 +192,12 @@
           class:overlap={w.overlap}
           class:match={matches?.has(i)}
           class:focus={i === focusWord}
+          data-word={i}
           role="button"
           tabindex="-1"
           title={w.conf < lowConfidence ? `Uncertain (${Math.round(w.conf * 100)} %)` : undefined}
           onclick={(e) => wordClick(e, i)}
-          ondblclick={(e) => { e.stopPropagation(); onStartEdit(i); }}
+          ondblclick={(e) => wordDblclick(e, i)}
           onkeydown={() => {}}>{w.text}</span>{" "}{/each}
     </p>
   {/if}
@@ -234,6 +278,14 @@
 
   .word:hover {
     background: var(--surface-2);
+  }
+
+  .detached .word {
+    cursor: text;
+  }
+
+  .detached .word:hover {
+    background: none;
   }
 
   .word.uncertain {

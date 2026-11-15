@@ -27,6 +27,8 @@ export interface Settings {
     /** Seconds to jump back when resuming playback (f4-style). */
     rewindOnResume: number;
     followPlayback: boolean;
+    /** Text and audio decoupled: clicking text edits instead of seeking, and nothing scrolls by itself. */
+    detached: boolean;
   };
   export: ExportOptions;
 }
@@ -43,7 +45,7 @@ const DEFAULT_SETTINGS: Settings = {
     vocabulary: "",
   },
   npu: { base_url: "http://localhost:8000/api/v1", model: "whisper-large-v3-turbo" },
-  editor: { lowConfidence: 0.6, rewindOnResume: 1, followPlayback: true },
+  editor: { lowConfidence: 0.6, rewindOnResume: 1, followPlayback: true, detached: false },
   export: { timestamps: "bracket", pause_min: 1, mark_overlap: true, header: true },
 };
 
